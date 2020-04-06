@@ -137,7 +137,7 @@
 				  :br
 				  ))
 			 
-			 #+(and unix (version>= 6 1))
+			 #+(and unix :allegro) ;;(version>= 6 1)
 			 (html
 			  "cgi tests: " 
 			  ((:a :href "cgi0") "show environment")

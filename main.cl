@@ -1530,14 +1530,14 @@ by keyword symbols and not by strings"
     (if* proc
        then ; we want this thread gone and the socket closed 
 	    ; so that we can reopen it if we want to.
-	    (mp:process-kill proc)
+	    #+ no (mp:process-kill proc)
 	    (mp:process-allow-schedule)
 	    (let ((oldsock (wserver-socket server)))
 	      (if* oldsock then (ignore-errors (close oldsock))))
 	    (setf (wserver-accept-thread server) nil)))
   
   (dolist (th (wserver-worker-threads server))
-    (mp:process-kill th)
+    #+no (mp:process-kill th)
     (mp:process-allow-schedule))
   
   (setf (wserver-worker-threads server) nil)
@@ -1622,7 +1622,7 @@ by keyword symbols and not by strings"
   
   ; create accept thread
   (setf (wserver-accept-thread *wserver*)
-    (mp:process-run-function 
+    (mp:make-process-run-function-allegro
 	(list :name (format nil "~A-accept-~d"
 			    (if* *log-wserver-name* 
 			       then (wserver-name *wserver*) 
@@ -1651,17 +1651,20 @@ by keyword symbols and not by strings"
 		       (if* *log-wserver-name* 
 			  then (wserver-name *wserver*) 
 			  else "aserve")))
-	 (proc (mp:make-process :name name
-                                :initial-bindings (initial-bindings))))
-    (mp:process-preset proc #'http-worker-thread)
+	 (proc (mp:make-process-allegro
+                #'http-worker-thread
+                :name name
+                :initial-bindings (initial-bindings))))
+    #+no (mp:process-preset proc #'http-worker-thread)
     (push proc (wserver-worker-threads *wserver*))
     (enqueue (wserver-free-worker-threads *wserver*) proc)
     (incf-free-workers *wserver* 1)
     (incf (wserver-n-workers *wserver*))
+    #+no
     (setf (getf (mp:process-property-list proc) 'short-name) 
       (format nil "w~d" thx))
     (setf (mp:process-keeps-lisp-alive-p proc) nil)
-    ))
+    proc))
 
 
 (defun http-worker-thread ()
@@ -1673,14 +1676,15 @@ by keyword symbols and not by strings"
 	)
     ;; lots of circular data structures in the caching code.. we 
     ;; need to restrict the print level
+    (format nil "Start worker thread ~a"  sys:*current-process*)
     (loop
 
       (let ((sock (dolist (rr (mp:process-run-reasons sys:*current-process*))
 		    (if* (streamp rr) then (return rr)))))
 	(if* (null sock)
 	   then ; started without a stream to process, must be because
-		;; we're being told to die, so abandon thread
-		(return-from http-worker-thread nil))
+           ;; we're being told to die, so abandon thread
+           (return-from http-worker-thread nil))
 	
 	(restart-case
 	    (cond
@@ -1713,7 +1717,9 @@ by keyword symbols and not by strings"
 				   then ; after the zoom ignore the error
 				   (go out))
 			      ))))
-		   (process-connection sock))
+		   (progn
+                     (logmess (format nil "Processing connection~a" sys:*current-process*))
+                     (process-connection sock)))
 	       out))
 	     ((not (member :notrap *debug-current* :test #'eq))
 	      (handler-case (process-connection sock)
@@ -1782,7 +1788,6 @@ by keyword symbols and not by strings"
 	  (handler-case
 	      (let ((sock (socket:accept-connection main-socket))
 		    (localhost))
-		
 		; optional.. useful if we find that sockets aren't being
 		; closed
 		(if* *watch-for-open-sockets*
@@ -1820,25 +1825,26 @@ by keyword symbols and not by strings"
 		  (loop
                     (multiple-value-bind (worker found-worker-p) (dequeue (wserver-free-worker-threads server) :wait 1)
                       (if* found-worker-p
-                         then (incf-free-workers server -1)
-                              (mp:process-add-run-reason worker sock)
-                              (return)
-                       elseif (below-max-n-workers-p server)
-                         then (case looped
-                                (0 nil)
-                                ((1 2 3) (logmess "all threads busy, pause")
-                                 (if* (>= (incf busy-sleeps) 4)
-                                    then ; we've waited too many times
-                                         (setq busy-sleeps 0)
-                                         (logmess "too many sleeps, will create a new thread")
-                                         (make-worker-thread)))
-                                (4
-                                 (logmess "forced to create new thread")
-                                 (make-worker-thread))
-                                (5
-                                 (logmess "can't even create new thread, quitting")
-                                 (return-from http-accept-thread nil)))
-                         else (logmess "all threads busy, pause"))
+                           then
+                           (incf-free-workers server -1)
+                           (mp:process-add-run-reason worker sock)
+                           (return)
+                           elseif (below-max-n-workers-p server)
+                           then (case looped
+                                  (0 nil)
+                                  ((1 2 3) (logmess "all threads busy, pause")
+                                   (if* (>= (incf busy-sleeps) 4)
+                                        then ; we've waited too many times
+                                        (setq busy-sleeps 0)
+                                        (logmess "too many sleeps, will create a new thread")
+                                        (make-worker-thread)))
+                                  (4
+                                   (logmess "forced to create new thread")
+                                   (make-worker-thread))
+                                  (5
+                                   (logmess "can't even create new thread, quitting")
+                                   (return-from http-accept-thread nil)))
+                           else (logmess "all threads busy, pause"))
                       (incf looped)))))
 	  
 	    (error (cond)

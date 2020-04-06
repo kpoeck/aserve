@@ -69,11 +69,13 @@
     t))
 
 
-(defmethod print-object ((stream chunking-stream) s)
+(defmetHod Print-object ((stream chunking-stream) s)
   (print-unreadable-object (stream s :identity *print-escape* :type t)
     (format s "ef ~s, to ~s " 
 	    (excl::ef-name (find-external-format (stream-external-format stream)))
-	    (slot-value stream 'excl::output-handle))))
+	    (handler-case
+                (slot-value stream 'excl::output-handle)
+              (error (e) "no excl::output-handle")))))
 
 (defmethod device-write ((p chunking-stream) buffer start end blocking)
   (declare (ignore blocking))
@@ -315,7 +317,9 @@
   (print-unreadable-object (stream s :identity *print-escape* :type t)
     (format s "ef ~s, from ~s " 
 	    (excl::ef-name (find-external-format (stream-external-format stream)))
-	    (slot-value stream 'excl::input-handle))))
+	    (handler-case
+                (slot-value stream 'excl::input-handle)
+              (error (e) "no excl::intput-handle")))))
 
 (defmethod device-read ((p unchunking-stream) buffer start end blocking)
 
