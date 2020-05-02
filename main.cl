@@ -1622,7 +1622,7 @@ by keyword symbols and not by strings"
   
   ; create accept thread
   (setf (wserver-accept-thread *wserver*)
-    (mp:make-process-run-function-allegro
+    (#+clasp mp:make-process-run-function-allegro #-clasp mp:process-run-function
 	(list :name (format nil "~A-accept-~d"
 			    (if* *log-wserver-name* 
 			       then (wserver-name *wserver*) 
@@ -1651,16 +1651,16 @@ by keyword symbols and not by strings"
 		       (if* *log-wserver-name* 
 			  then (wserver-name *wserver*) 
 			  else "aserve")))
-	 (proc (mp:make-process-allegro
-                #'http-worker-thread
+	 (proc (#+clasp mp:make-process-allegro #-clasp mp:make-process
+                #+clasp #'http-worker-thread
                 :name name
                 :initial-bindings (initial-bindings))))
-    #+no (mp:process-preset proc #'http-worker-thread)
+    #-clasp (mp:process-preset proc #'http-worker-thread)
     (push proc (wserver-worker-threads *wserver*))
     (enqueue (wserver-free-worker-threads *wserver*) proc)
     (incf-free-workers *wserver* 1)
     (incf (wserver-n-workers *wserver*))
-    #+no
+    #-clasp
     (setf (getf (mp:process-property-list proc) 'short-name) 
       (format nil "w~d" thx))
     (setf (mp:process-keeps-lisp-alive-p proc) nil)
